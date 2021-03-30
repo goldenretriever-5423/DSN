@@ -1,6 +1,6 @@
 #-*-coding:utf-8-*-
 
-from graph_cnn import Graph
+from dsn import Graph
 import tensorflow as tf
 import numpy as np
 from tensorflow.python.framework import ops

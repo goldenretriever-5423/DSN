@@ -21,8 +21,8 @@ def load_data(args):
     global features
     df = load_pkl('../data/weibo_formed_data_1m_history25_neg15_influence_emb.pkl')
     df = df.sample(frac=1, random_state=3)
-    df_train = df[0:18400]
-    df_test = df[18400:]
+    df_train = df[0:100]
+    df_test = df[100:120]
 
     train_data = transform(df_train,args)
     test_data = transform(df_test,args)
