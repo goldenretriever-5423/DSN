@@ -173,6 +173,7 @@ class Graph(object):
 
         return output
 
+
     def _build_train(self, args):
         with tf.name_scope('train'):
             self.base_loss = tf.reduce_mean(
