@@ -3,34 +3,43 @@
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import roc_auc_score, f1_score
-from collections import namedtuple
+
 
 tf.compat.v1.disable_eager_execution()
 
 
 class Graph(object):
     def __init__(self, args):
-        self.params = []  # for computing regularization loss
+        # initialization
+        self.params = []
         self._build_inputs(args)
         self._build_model(args)
         self._build_train(args)
 
     def _build_inputs(self, args):
-        with tf.name_scope('input'):
+        with tf.name_scope('dsn_input'):
+            # news titles, and involved user nodes in user's history news
             self.users_words = tf.compat.v1.placeholder(
                 dtype=tf.float32, shape=[None, args.max_history_per_user, args.max_title_length, args.word_dim],
-                name='clicked_words')
+                name='user_semantics_history')
             self.clicked_nodes = tf.compat.v1.placeholder(
-                dtype=tf.float32, shape=[None, args.max_history_per_user, args.node_dim], name='clicked_nodes')
-            self.clicked_entities = tf.compat.v1.placeholder(
-                dtype=tf.float32, shape=[None, args.max_history_per_user, args.max_entity_length, args.entity_dim],
-                name='clicked_entities')
+                dtype=tf.float32, shape=[None, args.max_history_per_user, args.node_dim], name='user_social_history')
+            # news title, and involved user nodes in candidate news
             self.news_words = tf.compat.v1.placeholder(
                 dtype=tf.float32, shape=[None, args.max_title_length, args.word_dim], name='news_words')
             self.news_node = tf.compat.v1.placeholder(
                 dtype=tf.float32, shape=[None, args.node_dim], name='news_node')
+
+            # ---------------------------------------- for knowledge test-----------------------------------------------
+            # knowledge entities in history news
+            self.clicked_entities = tf.compat.v1.placeholder(
+                dtype=tf.float32, shape=[None, args.max_history_per_user, args.max_entity_length, args.entity_dim],
+                name='clicked_entities')
+            # knowledge entities in candidate news
             self.news_entity = tf.compat.v1.placeholder(
                 dtype=tf.float32, shape=[None, args.max_entity_length, args.entity_dim], name='news_entity')
+            # ---------------------------------------- for knowledge test-----------------------------------------------
+
             self.labels = tf.compat.v1.placeholder(
                 dtype=tf.float32, shape=[None], name='labels')
 
@@ -38,11 +47,13 @@ class Graph(object):
 
         # get users and news embeddings
         user_embeddings, news_embeddings = self._attention(args)
-        # concat the embeddings
-        # whether use node embeddings
 
+        # concat the embeddings
         concat_embeddings = tf.concat([news_embeddings, user_embeddings], axis=1)
 
+
+        # ---------------------------- DNN for click probability --------------------------------
+        # tuning the number of layer and number of units in each layer
         dense1 = tf.keras.layers.Dense(units=512, activation=tf.nn.relu, name='dense1', \
                                        kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(concat_embeddings)
         # dense1_dropout = tf.keras.layers.Dropout(0.2)(dense1)
@@ -54,6 +65,8 @@ class Graph(object):
         # dense3 = tf.keras.layers.Dense(units=512, activation=tf.nn.relu, name='dense2', \
         #                                kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(dense2)
         # dense3_dropout = tf.keras.layers.Dropout(0.2)(dense3)
+        # ---------------------------- DNN for click probability --------------------------------
+
 
         output = tf.keras.layers.Dense(units=1, name='predictions')(dense2)
         self.logits = tf.reduce_sum(output, axis=1)
@@ -61,55 +74,75 @@ class Graph(object):
 
     def _attention(self, args):
 
-        # reduce mean sen2vec  (title_length * word_embedding) -> (word_embedding dimension)
-        # (batch_size, max_click_history, emb_dim) for users
-        # (batch_size, emb_dim) for news
-        # clicked_words = tf.reduce_mean(self.users_words, axis=2)
-        # news_embeddings = tf.reduce_mean(self.news_words, axis=1)
+        # transform word embed
+        if args.transform_word:
+            clicked_words = tf.keras.layers.Dense(units=args.word_dim_set, activation=None, \
+                                                  name='transformed_clikied_nodes')(self.users_words)
+            news_words = tf.keras.layers.Dense(units=args.word_dim_set, activation=None, \
+                                               name='transformed_clikied_nodes')(self.news_words)
 
-        # expand dimension of nodes
-        clicked_nodes = tf.expand_dims(self.clicked_nodes, 2)
-        news_node = tf.expand_dims(self.news_node, 1)
+            clicked_words = tf.reshape(clicked_words, shape=[-1, args.max_title_length, args.word_dim_set])
+            concat_input_history = clicked_words
+            concat_input_candidate = news_words
 
-        # copy the node embedding
-        clicked_nodes = tf.tile(clicked_nodes, [1, 1, args.max_title_length, 1])
-        news_node = tf.tile(news_node, [1, args.max_title_length, 1])
+        else:
+            clicked_words = tf.reshape(self.users_words, shape=[-1, args.max_title_length, args.word_dim])
+            concat_input_history = clicked_words
+            concat_input_candidate = self.news_words
 
+        if args.use_nodes:
+            # expand dimension of nodes
+            clicked_nodes = tf.expand_dims(self.clicked_nodes, 2)
+            news_node = tf.expand_dims(self.news_node, 1)
+
+            # copy the node embed to match title length
+            clicked_nodes = tf.tile(clicked_nodes, [1, 1, args.max_title_length, 1])
+            news_node = tf.tile(news_node, [1, args.max_title_length, 1])
+
+            # transform node embed
+            if args.transform_node:
+                clicked_nodes = tf.keras.layers.Dense(units=args.node_dim_set, activation=tf.nn.tanh, \
+                                                      name='transformed_clickied_nodes', \
+                                                      kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(clicked_nodes)
+                news_node = tf.keras.layers.Dense(units=args.node_dim_set, activation=tf.nn.tanh, \
+                                                  name='transformed_news_node', \
+                                                  kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(news_node)
+                clicked_nodes = tf.reshape(clicked_nodes, shape=[-1, args.max_title_length, args.node_dim_set])
+            else:
+                clicked_nodes = tf.reshape(clicked_nodes, shape=[-1, args.max_title_length, args.node_dim])
+
+            concat_input_history = tf.concat([concat_input_history, clicked_nodes], axis=-1)
+            concat_input_candidate = tf.concat([concat_input_candidate, news_node], axis=-1)
+
+        # --------------------------------- knowledge test -------------------------------------------------------------
         if args.use_knowledge:
-            # expand dimension of entity
-            clicked_entities = tf.tile(self.clicked_entities, [1, 1, 2, 1])
-            news_entity = tf.tile(self.news_entity, [1, 2, 1])
-        if args.transform_entity:
-            clicked_entities = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh,\
-                                                     name='transformed_clikied_entities', \
-                                                     kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(clicked_entities)
-            news_entity = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh,\
-                                                name='transformed_news_entity', \
-                                                kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(news_entity)
-        if args.transform_node:
-            clicked_nodes = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh, \
-                                                     name='transformed_clikied_nodes', \
-                                                     kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(clicked_nodes)
-            news_node = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh,\
-                                                name='transformed_news_node', \
-                                                kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(news_node)
-
-        # reshape the input data
-        clicked_words = tf.reshape(self.users_words, shape=[-1, args.max_title_length, args.word_dim])
-        clicked_nodes = tf.reshape(clicked_nodes, shape=[-1, args.max_title_length, args.word_dim])
-        if args.use_knowledge:
+            # expand entity dimension
+            clicked_entities = tf.tile(self.clicked_entities, [1, 1, args.max_title_length, 1])
+            news_entity = tf.tile(self.news_entity, [1, args.max_title_length, 1])
+            if args.transform_entity:
+                clicked_entities = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh, \
+                                                         name='transformed_clikied_entities', \
+                                                         kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(clicked_entities)
+                news_entity = tf.keras.layers.Dense(units=args.word_dim, activation=tf.nn.tanh, \
+                                                    name='transformed_news_entity', \
+                                                    kernel_regularizer=tf.keras.regularizers.l2(args.l2_weight))(news_entity)
             clicked_entities = tf.reshape(clicked_entities, shape=[-1, args.max_title_length, args.word_dim])
+
+            concat_input_history = tf.concat([concat_input_history, clicked_entities], axis=-1)
+            concat_input_candidate = tf.concat([concat_input_candidate, news_entity], axis=-1)
+        #  ----------------------------- knowledge test ----------------------------------------------------------------
 
         with tf.compat.v1.variable_scope('kcnn', reuse=tf.compat.v1.AUTO_REUSE):
             # (batch_size * max_click_history, title_embedding_length)
             # title_embedding_length = n_filters_for_each_size * n_filter_sizes
-            clicked_embeddings = self._kcnn(clicked_words, clicked_nodes, args)
-            news_embeddings = self._kcnn(self.news_words, news_node, args)
+            clicked_embeddings = self._kcnn(concat_input_history, args)
+            news_embeddings = self._kcnn(concat_input_candidate, args)
 
         # (batch_size, max_click_history, title_embedding_length)
         clicked_embeddings = tf.reshape( \
             clicked_embeddings, shape=[-1, args.max_history_per_user, args.n_filters * len(args.filter_sizes)])
 
+        # ------------------------------Attention--------------------------------
         # (batch_size, 1, title_embedding_length)
         news_embeddings_expanded = tf.expand_dims(news_embeddings, 1)
 
@@ -124,24 +157,20 @@ class Graph(object):
 
         # (batch_size, title_embedding_length)
         user_embeddings = tf.reduce_sum(clicked_embeddings * attention_weights_expanded, axis=1)
+        # ----------------------------Attention----------------------------------------
+
+        # without attention test
+        #         user_embeddings = tf.reduce_mean(clicked_embeddings, axis=1)
+
 
         return user_embeddings, news_embeddings
 
-    def _kcnn(self, words, nodes, args):
-        # (batch_size * max_click_history, word_dim) for users words, (batch_size * max_click_history, node_dim) for users_nodes
-        # (batch_size, word_dim) for news words, (batch_size, word_dim) for news node
+    def _kcnn(self, concat_input, args):
 
-        # (batch_size * max_click_history, max_title_length, full_dim) for users
-        # (batch_size, max_title_length, full_dim) for news
-        if args.use_knowledge:
-            concat_input = tf.concat([words, nodes], axis=-1)
-            full_dim = args.word_dim * 2 + args.node_dim
-        else:
-            concat_input = tf.concat([words, nodes], axis=-1)
-            full_dim = args.word_dim *2
+        full_dim = concat_input.shape[-1]
 
-        # (batch_size * max_click_history, max_title_length, full_dim, 1) for users
-        # (batch_size, max_title_length, full_dim, 1) for news
+        # user history: (batch_size * max_history_per_user, title_length, full_dim, 1)
+        # candidate news: (batch_size, title_length, full_dim, 1)
         concat_input = tf.expand_dims(concat_input, -1)
 
         outputs = []
@@ -152,23 +181,24 @@ class Graph(object):
             if w not in self.params:
                 self.params.append(w)
 
-            # (batch_size * max_click_history, max_title_length - filter_size + 1, 1, n_filters_for_each_size) for users
-            # (batch_size, max_title_length - filter_size + 1, 1, n_filters_for_each_size) for news
+
+            # user history: (batch_size * max_history_per_user, title_length - filter_size + 1, 1, #filters_in_each_size)
+            # candidate news: (batch_size, title_length - filter_size + 1, 1, #filters_in_each_size)
             conv = tf.nn.conv2d(concat_input, w, strides=[1, 1, 1, 1], padding='VALID', name='conv')
             relu = tf.nn.relu(tf.nn.bias_add(conv, b), name='relu')
 
-            # (batch_size * max_click_history, 1, 1, n_filters_for_each_size) for users
-            # (batch_size, 1, 1, n_filters_for_each_size) for news
+            # user history: (batch_size * max_history_per_user, 1, 1, #filters_in_each_size)
+            # candidate news: (batch_size, 1, 1, #filters_in_each_size)
             pool = tf.nn.max_pool(relu, ksize=[1, args.max_title_length - filter_size + 1, 1, 1],
                                   strides=[1, 1, 1, 1], padding='VALID', name='pool')
             outputs.append(pool)
 
-        # (batch_size * max_click_history, 1, 1, n_filters_for_each_size * n_filter_sizes) for users
-        # (batch_size, 1, 1, n_filters_for_each_size * n_filter_sizes) for news
+        # user history: (batch_size * max_history_per_user, 1, 1, #filters_in_each_size * #filter_sizes)
+        # candidate news: (batch_size, 1, 1, #filters_in_each_size * #filter_sizes)
         output = tf.concat(outputs, axis=-1)
 
-        # (batch_size * max_click_history, n_filters_for_each_size * n_filter_sizes) for users
-        # (batch_size, n_filters_for_each_size * n_filter_sizes) for news
+        # user history: (batch_size * max_history_per_user, #filters_in_each_size * #filter_sizes)
+        # candidate news: (batch_size, #filters_in_each_size * #filter_sizes)
         output = tf.reshape(output, [-1, args.n_filters * len(args.filter_sizes)])
 
         return output

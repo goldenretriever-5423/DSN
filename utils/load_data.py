@@ -16,13 +16,16 @@ features = ['news','history_titles','node_emb']
 
 # formed_data_history25_neg15_with_entity.pkl
 
-# TODO the fraction 0.8
+
 def load_data(args):
     global features
     df = load_pkl('../data/weibo_formed_data_1m_history25_neg15_influence_emb.pkl')
     df = df.sample(frac=1, random_state=3)
-    df_train = df[0:100]
-    df_test = df[100:120]
+    if args.use_sample:
+        df = df[0:args.sample_num]
+    split_num = int(df.shape[0] * 0.8)  # train/test split 0.8
+    df_train = df[0:split_num] # change the split_num for sample test
+    df_test = df[split_num:]
 
     train_data = transform(df_train,args)
     test_data = transform(df_test,args)
@@ -60,7 +63,7 @@ def transform(df,args):
 
 if __name__=="__main__":
 
-    path = '../data/news/users_titles_embedding.pkl'
+    path = '../data/weibo_formed_data_1m_history25_neg15_influence_emb.pkl'
     titles = load_pkl(path)
     print(len(titles))
 
