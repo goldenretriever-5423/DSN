@@ -10,11 +10,14 @@ due to the its diffusion and propagation process in the social network. The main
 Files description
 ---
 - 'data/'
+    - 'weibo/'
+        - 'raw_weibo.txt': raw weibo data
+        - 'graph.txt': the followership 
+    - 'pre-precessed_weibo.txt': each piece of news comprised the tokenized chinese words in the news title and the users' ID involved in its propagation.
     - 'weibo_formed_data_1m_history25_neg15_influence_emb.pkl': for each user with 25 positive news sampled from user hsitory and 15 negative news randomly sampled from weibo data. 
-    For each pieces of news, each word in the title is embedded as f-dimensional word vector and all the users involved in its propagation process are embedded as g-dimentional node vectors.
+    For each pieces of news, words in the title are embedded as f-dimensional word vectors and all the users involved in its propagation process are embedded as g-dimentional node vectors.
     The final representation of news is the concatenation of title word embedding and node embedding of involved users.
-    - 'raw_weibo.txt': raw weibo data
-    - 'pre-precessed_weibo.txt': tokenized chinese words
+    
 - 'model/'
     - 'config.py': configuration of DSN to for parameter tuning
     - 'dsn.py': the model
@@ -33,4 +36,8 @@ Required packages
 - graphviz == 0.14.1
 - jieba == 0.42.1
 - numpy == 1.17.2
+
+How the news is obtained from social media
+---
+
 
