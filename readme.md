@@ -11,7 +11,8 @@ How the news is obtained from social media
 - on weibo
 
 ![](fig/getNews_weibo.png)
--on twitter
+
+- on twitter
 
 ![](fig/getNews_twi.png)
 
