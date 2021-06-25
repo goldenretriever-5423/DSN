@@ -1,15 +1,19 @@
 # DSN: Influence-Aware News Recommendation in Social Media
 This repository is the implementation of DSN, a deep learning based model for news recommendation in social media,
 which makes news recommendation not only based on the semantic information of news, but also the social impact it carries
-due to the its diffusion and propagation process in the social network. The main components of DSN model are:
+due to the diffusion and propagation process in the social network. The main components of DSN model are:
 - A special designed CNN as feature extractor to learn jointly the semantic representation and social-related representation of news.
 - An attention network to aggregate user's adopted news w.r.t candidate news.
 
 
 How the news is obtained from social media
 ---
+- on weibo
 
 ![](fig/getNews_weibo.png)
+-on twitter
+
+![](fig/getNews_twi.png)
 
 Files description
 ---
