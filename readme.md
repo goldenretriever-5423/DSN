@@ -15,20 +15,20 @@ Files description
 ---
 - 'data/'
     - 'weibo/'
-        - 'repost_data_sample.txt': repost records between users
-        - 'graph_170w_1month_sample.txt': the dynamic followership between users within one month
-        - 'total_sample.txt':diffusion of blogs between users
+        - 'repost_data_sample.txt': repost records between users.
+        - 'graph_170w_1month_sample.txt': the dynamic followership between users within one month.
+        - 'total_sample.txt':diffusion of blogs between users.
     - 'weibo_formed_data_1m_history25_neg15_influence_emb.pkl': for each user with 25 positive news sampled from user hsitory and 15 negative news randomly sampled from weibo data. 
     For each pieces of news, words in the title are embedded as f-dimensional word vectors and all the users involved in its propagation process are embedded as g-dimentional node vectors.
     The final representation of news is the concatenation of title word embedding and node embedding of involved users.
     
 - 'model/'
-    - 'config.py': configuration of DSN to for parameter tuning
-    - 'dsn.py': the model
+    - 'config.py': configuration of DSN to for parameter tuning.
+    - 'dsn.py': the model.
     - 'main.py'
     - 'train.py'
 - 'utils.py'
-    - 'load_data.py': data loader
+    - 'load_data.py': data loader.
 
 > Note: The weibo repost data and user followership data are only a small sample of the ones carried out in experiment, the link of original weibo dataset and its detailed description are
 >available in [sina weibo](https://www.aminer.org/influencelocality). And for simplicity, the node embedding (by INFECTOR) and word embedding ([weibo chinese vector](https://github.com/Embedding/Chinese-Word-Vectors))
