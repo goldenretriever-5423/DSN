@@ -93,7 +93,7 @@ def save_pkl(obj, pkl_name):
 
 
 if __name__ == "__main__":
-    G=nx.read_edgelist('./weighted_edgelist.txt',
+    G=nx.read_edgelist('./sample_weighted_edgelist.txt',
         # '../data/wiki/Wiki_edgelist.txt',
                          create_using = nx.DiGraph(), nodetype = None, data = [('weight', float)])
     model = Node2Vec(G, walk_length=10, num_walks=80,
